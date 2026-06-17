@@ -23,8 +23,10 @@ import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.dpToPx
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
@@ -88,6 +90,7 @@ class WebtoonPageHolder(
      */
     private var loadJob: Job? = null
     private var translationJob: Job? = null
+    private var translationPrefetchJob: Job? = null
     private var translationPreferenceJob: Job? = null
     private var translationOverlay: ReaderTranslationOverlayView? = null
 
@@ -106,6 +109,7 @@ class WebtoonPageHolder(
         this.page = page
         loadJob?.cancel()
         translationJob?.cancel()
+        translationPrefetchJob?.cancel()
         translationPreferenceJob?.cancel()
         translationOverlay?.clear()
         loadJob = scope.launch { loadPageAndProcessStatus() }
@@ -133,6 +137,8 @@ class WebtoonPageHolder(
         loadJob = null
         translationJob?.cancel()
         translationJob = null
+        translationPrefetchJob?.cancel()
+        translationPrefetchJob = null
         translationPreferenceJob?.cancel()
         translationPreferenceJob = null
 
@@ -300,6 +306,7 @@ class WebtoonPageHolder(
 
     private fun startTranslation(page: ReaderPage) {
         translationJob?.cancel()
+        translationPrefetchJob?.cancel()
 
         if (!readerPreferences.readerTranslationEnabled.get()) {
             translationOverlay?.clear()
@@ -325,6 +332,9 @@ class WebtoonPageHolder(
                 },
             )
         }
+        translationPrefetchJob = scope.launch {
+            prefetchNextTranslations(page)
+        }
     }
 
     private suspend fun observeTranslationPreference(page: ReaderPage) {
@@ -344,6 +354,8 @@ class WebtoonPageHolder(
     private fun stopTranslation() {
         translationJob?.cancel()
         translationJob = null
+        translationPrefetchJob?.cancel()
+        translationPrefetchJob = null
         translationOverlay?.clear()
     }
 
@@ -363,6 +375,34 @@ class WebtoonPageHolder(
             frame.addView(it, MATCH_PARENT, MATCH_PARENT)
             it.bringToFront()
             translationOverlay = it
+        }
+    }
+
+    private suspend fun prefetchNextTranslations(currentPage: ReaderPage) {
+        viewer.getPagesAfter(currentPage, TRANSLATION_PREFETCH_PAGES)
+            .forEach { page ->
+                if (this@WebtoonPageHolder.page != currentPage) return
+                if (!readerPreferences.readerTranslationEnabled.get()) return
+                if (!waitUntilReady(page)) return@forEach
+
+                translationManager.translate(page)
+            }
+    }
+
+    private suspend fun waitUntilReady(page: ReaderPage): Boolean {
+        if (page.status == Page.State.Ready) return page.stream != null
+
+        val loader = page.chapter.pageLoader ?: return false
+        val loadJob = scope.launch {
+            loader.loadPage(page)
+        }
+
+        return try {
+            page.statusFlow.first { state ->
+                state == Page.State.Ready || state is Page.State.Error
+            } == Page.State.Ready && page.stream != null
+        } finally {
+            loadJob.cancelAndJoin()
         }
     }
 
@@ -407,3 +447,5 @@ class WebtoonPageHolder(
         }
     }
 }
+
+private const val TRANSLATION_PREFETCH_PAGES = 3

@@ -279,6 +279,16 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
         }
     }
 
+    fun getPagesAfter(page: ReaderPage, amount: Int): List<ReaderPage> {
+        val position = adapter.items.indexOf(page)
+        if (position == -1) return emptyList()
+
+        return adapter.items
+            .drop(position + 1)
+            .filterIsInstance<ReaderPage>()
+            .take(amount)
+    }
+
     /**
      * Scrolls up by [scrollDistance].
      */
