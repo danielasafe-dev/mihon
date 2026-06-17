@@ -108,6 +108,11 @@ internal fun ColumnScope.GeneralPage(screenModel: ReaderSettingsScreenModel) {
     )
 
     CheckboxItem(
+        label = stringResource(MR.strings.pref_reader_translation),
+        pref = screenModel.preferences.readerTranslationEnabled,
+    )
+
+    CheckboxItem(
         label = stringResource(MR.strings.pref_flash_page),
         pref = screenModel.preferences.flashOnPageChange,
     )

@@ -268,6 +268,10 @@ dependencies {
     implementation(libs.bundles.markdown)
     implementation(libs.materialKolor)
 
+    // Local OCR and translation for reader overlays
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.mlkit.translate)
+
     // Logging
     implementation(libs.logcat)
 

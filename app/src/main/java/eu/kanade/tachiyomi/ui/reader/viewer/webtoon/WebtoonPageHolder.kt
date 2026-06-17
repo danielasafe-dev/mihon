@@ -14,6 +14,9 @@ import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.translation.ReaderTranslationManager
+import eu.kanade.tachiyomi.ui.reader.translation.ReaderTranslationOverlayView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
@@ -33,6 +36,8 @@ import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Holder of the webtoon reader for a single page of a chapter.
@@ -74,11 +79,15 @@ class WebtoonPageHolder(
     private var page: ReaderPage? = null
 
     private val scope = MainScope()
+    private val readerPreferences: ReaderPreferences = Injekt.get()
+    private val translationManager: ReaderTranslationManager = Injekt.get()
 
     /**
      * Job for loading the page.
      */
     private var loadJob: Job? = null
+    private var translationJob: Job? = null
+    private var translationOverlay: ReaderTranslationOverlayView? = null
 
     init {
         refreshLayoutParams()
@@ -94,6 +103,8 @@ class WebtoonPageHolder(
     fun bind(page: ReaderPage) {
         this.page = page
         loadJob?.cancel()
+        translationJob?.cancel()
+        translationOverlay?.clear()
         loadJob = scope.launch { loadPageAndProcessStatus() }
         refreshLayoutParams()
     }
@@ -116,8 +127,11 @@ class WebtoonPageHolder(
     override fun recycle() {
         loadJob?.cancel()
         loadJob = null
+        translationJob?.cancel()
+        translationJob = null
 
         removeErrorLayout()
+        translationOverlay?.clear()
         frame.recycle()
         progressIndicator.setProgress(0)
         progressContainer.isVisible = true
@@ -206,6 +220,7 @@ class WebtoonPageHolder(
                     ),
                 )
                 removeErrorLayout()
+                startTranslation(page ?: return@withUIContext)
             }
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e)
@@ -245,6 +260,8 @@ class WebtoonPageHolder(
      * Called when the page has an error.
      */
     private fun setError(error: Throwable?) {
+        translationJob?.cancel()
+        translationOverlay?.clear()
         progressContainer.isVisible = false
         initErrorLayout(error)
     }
@@ -271,6 +288,43 @@ class WebtoonPageHolder(
         }
         progressContainer.addView(progress)
         return progress
+    }
+
+    private fun startTranslation(page: ReaderPage) {
+        translationJob?.cancel()
+
+        val overlay = ensureTranslationOverlay()
+        if (!readerPreferences.readerTranslationEnabled.get()) {
+            overlay.clear()
+            return
+        }
+
+        overlay.showPreparing()
+        translationJob = scope.launch {
+            val result = translationManager.translate(page)
+            if (this@WebtoonPageHolder.page != page) return@launch
+
+            result.fold(
+                onSuccess = overlay::showResult,
+                onFailure = {
+                    logcat(LogPriority.WARN, it)
+                    overlay.showError()
+                },
+            )
+        }
+    }
+
+    private fun ensureTranslationOverlay(): ReaderTranslationOverlayView {
+        translationOverlay?.let {
+            it.bringToFront()
+            return it
+        }
+
+        return ReaderTranslationOverlayView(context).also {
+            frame.addView(it, MATCH_PARENT, MATCH_PARENT)
+            it.bringToFront()
+            translationOverlay = it
+        }
     }
 
     /**

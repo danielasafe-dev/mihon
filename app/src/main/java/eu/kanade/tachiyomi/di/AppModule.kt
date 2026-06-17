@@ -22,6 +22,10 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
+import eu.kanade.tachiyomi.ui.reader.translation.MlKitReaderOcr
+import eu.kanade.tachiyomi.ui.reader.translation.MlKitReaderTranslator
+import eu.kanade.tachiyomi.ui.reader.translation.ReaderTranslationCache
+import eu.kanade.tachiyomi.ui.reader.translation.ReaderTranslationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.plus
@@ -116,6 +120,10 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { ChapterCache(app, get()) }
         addSingletonFactory { CoverCache(app) }
+        addSingletonFactory { ReaderTranslationCache(app, get()) }
+        addSingletonFactory { MlKitReaderOcr() }
+        addSingletonFactory { MlKitReaderTranslator() }
+        addSingletonFactory { ReaderTranslationManager(get(), get(), get(), get()) }
 
         addSingletonFactory { NetworkHelper(app, get(), get()) }
         addSingletonFactory { JavaScriptEngine(app) }
