@@ -22,17 +22,14 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
-    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 255, 255, 255)
-        style = Paint.Style.FILL
-    }
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(180, 0, 0, 0)
+    private val textOutlinePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 1.dpToPx.toFloat()
+        strokeWidth = 3.dpToPx.toFloat()
     }
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
+        style = Paint.Style.FILL
     }
     private val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(220, 0, 0, 0)
@@ -90,8 +87,7 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
 
         val scaleX = width.toFloat() / result.imageWidth.toFloat()
         val scaleY = height.toFloat() / result.imageHeight.toFloat()
-        val padding = 4.dpToPx.toFloat()
-        val radius = 4.dpToPx.toFloat()
+        val padding = 2.dpToPx.toFloat()
 
         result.blocks.forEach { block ->
             val rect = RectF(
@@ -110,9 +106,15 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
             if (rect.width() <= padding * 2 || rect.height() <= padding * 2) return@forEach
 
             textPaint.textSize = estimateTextSize(rect)
+            textOutlinePaint.textSize = textPaint.textSize
             val layoutWidth = max(1, (rect.width() - padding * 2).toInt())
             val layout = StaticLayout.Builder
                 .obtain(block.translatedText, 0, block.translatedText.length, textPaint, layoutWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setIncludePad(false)
+                .build()
+            val outlineLayout = StaticLayout.Builder
+                .obtain(block.translatedText, 0, block.translatedText.length, textOutlinePaint, layoutWidth)
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setIncludePad(false)
                 .build()
@@ -122,10 +124,9 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
                 rect.bottom = min(height.toFloat(), rect.top + desiredHeight)
             }
 
-            canvas.drawRoundRect(rect, radius, radius, backgroundPaint)
-            canvas.drawRoundRect(rect, radius, radius, borderPaint)
             canvas.save()
-            canvas.translate(rect.left + padding, rect.top + padding)
+            canvas.translate(rect.left + padding, rect.top + max(padding, (rect.height() - layout.height) / 2f))
+            outlineLayout.draw(canvas)
             layout.draw(canvas)
             canvas.restore()
         }
