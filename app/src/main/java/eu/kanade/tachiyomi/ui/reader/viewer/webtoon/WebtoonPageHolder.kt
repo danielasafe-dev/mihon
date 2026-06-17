@@ -24,6 +24,7 @@ import eu.kanade.tachiyomi.util.system.dpToPx
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
@@ -87,6 +88,7 @@ class WebtoonPageHolder(
      */
     private var loadJob: Job? = null
     private var translationJob: Job? = null
+    private var translationPreferenceJob: Job? = null
     private var translationOverlay: ReaderTranslationOverlayView? = null
 
     init {
@@ -104,8 +106,10 @@ class WebtoonPageHolder(
         this.page = page
         loadJob?.cancel()
         translationJob?.cancel()
+        translationPreferenceJob?.cancel()
         translationOverlay?.clear()
         loadJob = scope.launch { loadPageAndProcessStatus() }
+        translationPreferenceJob = scope.launch { observeTranslationPreference(page) }
         refreshLayoutParams()
     }
 
@@ -129,6 +133,8 @@ class WebtoonPageHolder(
         loadJob = null
         translationJob?.cancel()
         translationJob = null
+        translationPreferenceJob?.cancel()
+        translationPreferenceJob = null
 
         removeErrorLayout()
         translationOverlay?.clear()
@@ -172,6 +178,7 @@ class WebtoonPageHolder(
      * Called when the page is queued.
      */
     private fun setQueued() {
+        stopTranslation()
         progressContainer.isVisible = true
         progressIndicator.show()
         removeErrorLayout()
@@ -181,6 +188,7 @@ class WebtoonPageHolder(
      * Called when the page is loading.
      */
     private fun setLoading() {
+        stopTranslation()
         progressContainer.isVisible = true
         progressIndicator.show()
         removeErrorLayout()
@@ -190,6 +198,7 @@ class WebtoonPageHolder(
      * Called when the page is downloading
      */
     private fun setDownloading() {
+        stopTranslation()
         progressContainer.isVisible = true
         progressIndicator.show()
         removeErrorLayout()
@@ -260,8 +269,7 @@ class WebtoonPageHolder(
      * Called when the page has an error.
      */
     private fun setError(error: Throwable?) {
-        translationJob?.cancel()
-        translationOverlay?.clear()
+        stopTranslation()
         progressContainer.isVisible = false
         initErrorLayout(error)
     }
@@ -293,12 +301,17 @@ class WebtoonPageHolder(
     private fun startTranslation(page: ReaderPage) {
         translationJob?.cancel()
 
-        val overlay = ensureTranslationOverlay()
         if (!readerPreferences.readerTranslationEnabled.get()) {
-            overlay.clear()
+            translationOverlay?.clear()
             return
         }
 
+        if (!canTranslateCurrentImage()) {
+            translationOverlay?.clear()
+            return
+        }
+
+        val overlay = ensureTranslationOverlay()
         overlay.showPreparing()
         translationJob = scope.launch {
             val result = translationManager.translate(page)
@@ -312,6 +325,32 @@ class WebtoonPageHolder(
                 },
             )
         }
+    }
+
+    private suspend fun observeTranslationPreference(page: ReaderPage) {
+        readerPreferences.readerTranslationEnabled.changes()
+            .distinctUntilChanged()
+            .collectLatest { enabled ->
+                if (this@WebtoonPageHolder.page != page) return@collectLatest
+
+                if (enabled && page.status == Page.State.Ready) {
+                    startTranslation(page)
+                } else {
+                    stopTranslation()
+                }
+            }
+    }
+
+    private fun stopTranslation() {
+        translationJob?.cancel()
+        translationJob = null
+        translationOverlay?.clear()
+    }
+
+    private fun canTranslateCurrentImage(): Boolean {
+        return !viewer.config.dualPageRotateToFit &&
+            !viewer.config.dualPageSplit &&
+            !viewer.config.imageCropBorders
     }
 
     private fun ensureTranslationOverlay(): ReaderTranslationOverlayView {
