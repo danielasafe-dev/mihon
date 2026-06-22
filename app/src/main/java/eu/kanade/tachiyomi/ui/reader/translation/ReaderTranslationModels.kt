@@ -39,3 +39,4 @@ data class ReaderOcrBlock(
 
 internal const val READER_TRANSLATION_SOURCE_LANGUAGE = "en"
 internal const val READER_TRANSLATION_TARGET_LANGUAGE = "pt"
+internal const val READER_TRANSLATION_CACHE_VERSION = "2"

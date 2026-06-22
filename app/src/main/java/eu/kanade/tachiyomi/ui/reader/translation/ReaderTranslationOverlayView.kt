@@ -96,7 +96,9 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
                 block.bounds.right * scaleX,
                 block.bounds.bottom * scaleY,
             ).apply {
-                inset(-padding, -padding)
+                val horizontalPadding = max(padding * 2, width() * 0.24f)
+                val verticalPadding = max(padding, height() * 0.18f)
+                inset(-horizontalPadding, -verticalPadding)
                 left = left.coerceIn(0f, width.toFloat())
                 top = top.coerceIn(0f, height.toFloat())
                 right = right.coerceIn(0f, width.toFloat())

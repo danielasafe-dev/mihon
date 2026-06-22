@@ -31,43 +31,19 @@ class MlKitReaderTranslator {
     }
 
     private suspend fun translateGroup(blocks: List<ReaderOcrBlock>): List<ReaderTranslationBlock> {
-        if (blocks.size == 1) {
-            return translateIndividually(blocks)
-        }
+        val sourceText = blocks.joinToString(TRANSLATION_CONTEXT_SEPARATOR) { it.text.normalizeForTranslation() }
+        val translatedText = translator.translate(sourceText).await().trim()
+        if (translatedText.isBlank()) return emptyList()
 
-        val groupedText = blocks.joinToString(TRANSLATION_CONTEXT_SEPARATOR) { it.text }
-        val translatedLines = translator.translate(groupedText)
-            .await()
-            .lines()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-
-        if (translatedLines.size != blocks.size) {
-            return translateIndividually(blocks)
-        }
-
-        return blocks.zip(translatedLines).mapNotNull { (block, translatedText) ->
-            if (translatedText.isBlank()) return@mapNotNull null
-
+        return listOf(
             ReaderTranslationBlock(
-                sourceText = block.text,
+                sourceText = sourceText,
                 translatedText = translatedText,
-                bounds = block.bounds,
-            )
-        }
-    }
-
-    private suspend fun translateIndividually(blocks: List<ReaderOcrBlock>): List<ReaderTranslationBlock> {
-        return blocks.mapNotNull { block ->
-            val translatedText = translator.translate(block.text).await().trim()
-            if (translatedText.isBlank()) return@mapNotNull null
-
-            ReaderTranslationBlock(
-                sourceText = block.text,
-                translatedText = translatedText,
-                bounds = block.bounds,
-            )
-        }
+                bounds = blocks
+                    .map { it.bounds }
+                    .reduce(::mergeBounds),
+            ),
+        )
     }
 
     private fun groupNearbyBlocks(blocks: List<ReaderOcrBlock>): List<List<ReaderOcrBlock>> {
@@ -114,9 +90,10 @@ class MlKitReaderTranslator {
         val blockHeight = blockBounds.height.coerceAtLeast(1f)
         val maxVerticalGap = maxOf(groupHeight, blockHeight) * MAX_VERTICAL_GAP_MULTIPLIER
         val verticalGap = blockBounds.top - groupBounds.bottom
+        val maxCenterGap = maxOf(groupBounds.width, blockBounds.width) * MAX_CENTER_GAP_MULTIPLIER
+        val horizontalCenterGap = kotlin.math.abs(groupBounds.centerX - blockBounds.centerX)
 
-        if (verticalGap < 0f) return true
-        return verticalGap <= maxVerticalGap
+        return verticalGap <= maxVerticalGap && horizontalCenterGap <= maxCenterGap
     }
 
     private fun mergeBounds(
@@ -147,9 +124,23 @@ class MlKitReaderTranslator {
     }
 }
 
+private fun String.normalizeForTranslation(): String {
+    return lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+}
+
 private val ReaderTranslationBounds.height: Float
     get() = bottom - top
+
+private val ReaderTranslationBounds.width: Float
+    get() = right - left
+
+private val ReaderTranslationBounds.centerX: Float
+    get() = left + width / 2f
 
 private const val TRANSLATION_CONTEXT_SEPARATOR = "\n"
 private const val MAX_TRANSLATION_CONTEXT_BLOCKS = 4
 private const val MAX_VERTICAL_GAP_MULTIPLIER = 1.5f
+private const val MAX_CENTER_GAP_MULTIPLIER = 0.85f

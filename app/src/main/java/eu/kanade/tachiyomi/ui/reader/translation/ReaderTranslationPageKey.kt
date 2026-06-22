@@ -20,6 +20,7 @@ data class ReaderTranslationPageKey(
                     imageIdentity,
                     READER_TRANSLATION_SOURCE_LANGUAGE,
                     READER_TRANSLATION_TARGET_LANGUAGE,
+                    READER_TRANSLATION_CACHE_VERSION,
                 ).joinToString(separator = "|"),
             )
         }
