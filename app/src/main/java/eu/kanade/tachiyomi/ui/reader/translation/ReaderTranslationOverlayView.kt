@@ -23,7 +23,7 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 255, 255, 255)
+        color = Color.WHITE
         style = Paint.Style.FILL
     }
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -95,30 +95,12 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
                 block.bounds.top * scaleY,
                 block.bounds.right * scaleX,
                 block.bounds.bottom * scaleY,
-            ).apply {
-                val horizontalPadding = max(padding * 2, width() * 0.24f)
-                val verticalPadding = max(padding, height() * 0.18f)
-                inset(-horizontalPadding, -verticalPadding)
-                left = left.coerceIn(0f, width.toFloat())
-                top = top.coerceIn(0f, height.toFloat())
-                right = right.coerceIn(0f, width.toFloat())
-                bottom = bottom.coerceIn(0f, height.toFloat())
-            }
+            ).expandForMask(padding)
 
             if (rect.width() <= padding * 2 || rect.height() <= padding * 2) return@forEach
 
-            textPaint.textSize = estimateTextSize(rect)
             val layoutWidth = max(1, (rect.width() - padding * 2).toInt())
-            val layout = StaticLayout.Builder
-                .obtain(block.translatedText, 0, block.translatedText.length, textPaint, layoutWidth)
-                .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                .setIncludePad(false)
-                .build()
-
-            val desiredHeight = layout.height + padding * 2
-            if (desiredHeight > rect.height()) {
-                rect.bottom = min(height.toFloat(), rect.top + desiredHeight)
-            }
+            val layout = buildFittingLayout(block.translatedText, layoutWidth, rect.height() - padding * 2)
 
             canvas.drawRoundRect(rect, radius, radius, backgroundPaint)
             canvas.save()
@@ -128,9 +110,47 @@ class ReaderTranslationOverlayView @JvmOverloads constructor(
         }
     }
 
-    private fun estimateTextSize(rect: RectF): Float {
-        val heightBased = rect.height() * 0.28f
-        return heightBased.coerceIn(11.dpToPx.toFloat(), 20.dpToPx.toFloat())
+    private fun RectF.expandForMask(padding: Float): RectF {
+        val horizontalPadding = max(padding * 3, width() * 0.36f)
+        val verticalPadding = max(padding * 2, height() * 0.42f)
+
+        inset(-horizontalPadding, -verticalPadding)
+        left = left.coerceIn(0f, this@ReaderTranslationOverlayView.width.toFloat())
+        top = top.coerceIn(0f, this@ReaderTranslationOverlayView.height.toFloat())
+        right = right.coerceIn(0f, this@ReaderTranslationOverlayView.width.toFloat())
+        bottom = bottom.coerceIn(0f, this@ReaderTranslationOverlayView.height.toFloat())
+
+        return this
+    }
+
+    private fun buildFittingLayout(text: String, layoutWidth: Int, maxHeight: Float): StaticLayout {
+        val minTextSize = 9.dpToPx.toFloat()
+        val maxTextSize = 21.dpToPx.toFloat()
+        var low = minTextSize
+        var high = maxTextSize
+        var best = createLayout(text, layoutWidth, minTextSize)
+
+        repeat(8) {
+            val candidate = (low + high) / 2f
+            val layout = createLayout(text, layoutWidth, candidate)
+            if (layout.height <= maxHeight) {
+                best = layout
+                low = candidate
+            } else {
+                high = candidate
+            }
+        }
+
+        return best
+    }
+
+    private fun createLayout(text: String, layoutWidth: Int, textSize: Float): StaticLayout {
+        textPaint.textSize = textSize
+        return StaticLayout.Builder
+            .obtain(text, 0, text.length, textPaint, layoutWidth)
+            .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setIncludePad(false)
+            .build()
     }
 
     private fun drawStatus(canvas: Canvas, text: String) {

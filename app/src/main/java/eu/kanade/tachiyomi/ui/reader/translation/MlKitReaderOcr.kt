@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.translation
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Rect
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -22,21 +23,16 @@ class MlKitReaderOcr {
             ReaderOcrResult(
                 imageWidth = bitmap.width,
                 imageHeight = bitmap.height,
-                blocks = text.textBlocks.mapNotNull { block ->
-                    val bounds = block.boundingBox ?: return@mapNotNull null
-                    val sourceText = block.text.trim()
-                    if (sourceText.isBlank()) return@mapNotNull null
-
-                    ReaderOcrBlock(
-                        text = sourceText,
-                        bounds = ReaderTranslationBounds(
-                            left = bounds.left.toFloat(),
-                            top = bounds.top.toFloat(),
-                            right = bounds.right.toFloat(),
-                            bottom = bounds.bottom.toFloat(),
-                        ),
-                    )
-                },
+                blocks = text.textBlocks.flatMap { block ->
+                    if (block.lines.isNotEmpty()) {
+                        block.lines.mapNotNull { line -> line.toOcrBlock() }
+                    } else {
+                        listOfNotNull(block.toOcrBlock())
+                    }
+                }.sortedWith(
+                    compareBy<ReaderOcrBlock> { it.bounds.top }
+                        .thenBy { it.bounds.left },
+                ),
             )
         } finally {
             bitmap.recycle()
@@ -77,5 +73,29 @@ class MlKitReaderOcr {
     }
 }
 
-private const val MAX_OCR_PIXELS = 4_000_000
-private const val MIN_OCR_WIDTH = 500
+private fun com.google.mlkit.vision.text.Text.TextBlock.toOcrBlock(): ReaderOcrBlock? {
+    return toOcrBlock(text, boundingBox)
+}
+
+private fun com.google.mlkit.vision.text.Text.Line.toOcrBlock(): ReaderOcrBlock? {
+    return toOcrBlock(text, boundingBox)
+}
+
+private fun toOcrBlock(text: String, rect: Rect?): ReaderOcrBlock? {
+    val bounds = rect ?: return null
+    val sourceText = text.trim()
+    if (sourceText.isBlank()) return null
+
+    return ReaderOcrBlock(
+        text = sourceText,
+        bounds = ReaderTranslationBounds(
+            left = bounds.left.toFloat(),
+            top = bounds.top.toFloat(),
+            right = bounds.right.toFloat(),
+            bottom = bounds.bottom.toFloat(),
+        ),
+    )
+}
+
+private const val MAX_OCR_PIXELS = 10_000_000
+private const val MIN_OCR_WIDTH = 900

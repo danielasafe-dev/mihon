@@ -38,7 +38,9 @@ class ReaderTranslationManager(
                             blocks = translatedBlocks,
                         )
 
-                        cache.put(key, result)
+                        if (translatedBlocks.isNotEmpty()) {
+                            cache.put(key, result)
+                        }
                         result
                     }
                 }.also {
